@@ -271,7 +271,7 @@ def main(args):
     # create a profile contex
     with torch.profiler.profile(
       schedule=torch.profiler.schedule(wait=1, warmup=1, active=3, repeat=5),
-      on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir+'/profiler'),
+      on_trace_ready=torch.profiler.tensorboard_trace_handler(str(output_dir)+'/profiler'),
       record_shapes=True,
       with_stack=True
     ) as profiler:
