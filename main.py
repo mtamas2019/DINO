@@ -267,6 +267,16 @@ def main(args):
     print("Start training")
     start_time = time.time()
     best_map_holder = BestMetricHolder(use_ema=args.use_ema)
+
+    # create a profile contex
+    if args.output_dir:
+      with torch.profiler.profile(
+        schedule=torch.profiler.schedule(wait=1, warmup=1, active=3, repeat=5),
+        on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir+'/profiler'),
+        record_shapes=True,
+        with_stack=True
+      ) as profiler:
+
     for epoch in range(args.start_epoch, args.epochs):
         epoch_start_time = time.time()
         if args.distributed:
@@ -274,8 +284,10 @@ def main(args):
         train_stats = train_one_epoch(
             model, criterion, data_loader_train, optimizer, device, epoch,
             args.clip_max_norm, wo_class_error=wo_class_error, lr_scheduler=lr_scheduler, args=args, logger=(logger if args.save_log else None), ema_m=ema_m)
+
         if args.output_dir:
-            checkpoint_paths = [output_dir / 'checkpoint.pth']
+          checkpoint_paths = [output_dir / 'checkpoint.pth']
+          profiler.step
 
         if not args.onecyclelr:
             lr_scheduler.step()
