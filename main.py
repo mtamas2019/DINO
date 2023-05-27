@@ -269,15 +269,14 @@ def main(args):
     best_map_holder = BestMetricHolder(use_ema=args.use_ema)
 
     # create a profile contex
-    if args.output_dir:
-      with torch.profiler.profile(
-        schedule=torch.profiler.schedule(wait=1, warmup=1, active=3, repeat=5),
-        on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir+'/profiler'),
-        record_shapes=True,
-        with_stack=True
-      ) as profiler:
+    with torch.profiler.profile(
+      schedule=torch.profiler.schedule(wait=1, warmup=1, active=3, repeat=5),
+      on_trace_ready=torch.profiler.tensorboard_trace_handler(output_dir+'/profiler'),
+      record_shapes=True,
+      with_stack=True
+    ) as profiler:
 
-    for epoch in range(args.start_epoch, args.epochs):
+     for epoch in range(args.start_epoch, args.epochs):
         epoch_start_time = time.time()
         if args.distributed:
             sampler_train.set_epoch(epoch)
