@@ -162,7 +162,7 @@ def main(args):
 
     optimizer = torch.optim.AdamW(param_dicts, lr=args.lr,
                                   weight_decay=args.weight_decay)
-    
+
 
     dataset_train = build_dataset(image_set='train', args=args)
     dataset_val = build_dataset(image_set='val', args=args)
@@ -286,7 +286,7 @@ def main(args):
 
         if args.output_dir:
           checkpoint_paths = [output_dir / 'checkpoint.pth']
-          profiler.step
+          profiler.step()
 
         if not args.onecyclelr:
             lr_scheduler.step()
