@@ -21,8 +21,7 @@ import util.misc as utils
 import datasets
 from datasets import build_dataset, get_coco_api_from_dataset
 from engine import evaluate, train_one_epoch, test
-
-
+from torch.profiler import profile, record_function, ProfilerActivity
 
 def get_args_parser():
     parser = argparse.ArgumentParser('Set transformer detector', add_help=False)
@@ -71,7 +70,7 @@ def get_args_parser():
     parser.add_argument("--local_rank", type=int, help='local rank for DistributedDataParallel')
     parser.add_argument('--amp', action='store_true',
                         help="Train with mixed precision")
-    
+
     return parser
 
 
@@ -216,7 +215,7 @@ def main(args):
                 ema_m.module.load_state_dict(utils.clean_state_dict(checkpoint['ema_model']))
             else:
                 del ema_m
-                ema_m = ModelEma(model, args.ema_decay)                
+                ema_m = ModelEma(model, args.ema_decay)
 
         if not args.eval and 'optimizer' in checkpoint and 'lr_scheduler' in checkpoint and 'epoch' in checkpoint:
             optimizer.load_state_dict(checkpoint['optimizer'])
@@ -247,7 +246,7 @@ def main(args):
                 ema_m.module.load_state_dict(utils.clean_state_dict(checkpoint['ema_model']))
             else:
                 del ema_m
-                ema_m = ModelEma(model, args.ema_decay)        
+                ema_m = ModelEma(model, args.ema_decay)
 
 
     if args.eval:
@@ -267,26 +266,23 @@ def main(args):
     print("Start training")
     start_time = time.time()
     best_map_holder = BestMetricHolder(use_ema=args.use_ema)
-
-    # create a profile contex
-    with torch.profiler.profile(
-      schedule=torch.profiler.schedule(wait=1, warmup=1, active=3, repeat=5),
-      on_trace_ready=torch.profiler.tensorboard_trace_handler(str(output_dir)+'/profiler'),
-      record_shapes=True,
-      with_stack=True
-    ) as profiler:
-
-     for epoch in range(args.start_epoch, args.epochs):
+    for epoch in range(args.start_epoch, args.epochs):
         epoch_start_time = time.time()
         if args.distributed:
             sampler_train.set_epoch(epoch)
-        train_stats = train_one_epoch(
-            model, criterion, data_loader_train, optimizer, device, epoch,
-            args.clip_max_norm, wo_class_error=wo_class_error, lr_scheduler=lr_scheduler, args=args, logger=(logger if args.save_log else None), ema_m=ema_m)
+        with profile(activities=[ProfilerActivity.CUDA],profile_memory=False,record_shapes=False) as prof:
+          train_stats = train_one_epoch(
+              model, criterion, data_loader_train, optimizer, device, epoch,
+              args.clip_max_norm, wo_class_error=wo_class_error, lr_scheduler=lr_scheduler, args=args, logger=(logger if args.save_log else None), ema_m=ema_m)
+
+#        print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=10))
+
+        with open('output.txt', 'w') as f:
+          print(prof.key_averages().table(row_limit=100), file=f)
+        prof.export_chrome_trace("trace.json")
 
         if args.output_dir:
-          checkpoint_paths = [output_dir / 'checkpoint.pth']
-          profiler.step()
+            checkpoint_paths = [output_dir / 'checkpoint.pth']
 
         if not args.onecyclelr:
             lr_scheduler.step()
@@ -308,7 +304,7 @@ def main(args):
                         'ema_model': ema_m.module.state_dict(),
                     })
                 utils.save_on_master(weights, checkpoint_path)
-                
+
         # eval
         test_stats, coco_evaluator = evaluate(
             model, criterion, postprocessors, data_loader_val, base_ds, device, args.output_dir,
@@ -359,7 +355,7 @@ def main(args):
             log_stats.update({'now_time': str(datetime.datetime.now())})
         except:
             pass
-        
+
         epoch_time = time.time() - epoch_start_time
         epoch_time_str = str(datetime.timedelta(seconds=int(epoch_time)))
         log_stats['epoch_time'] = epoch_time_str
@@ -392,6 +388,10 @@ def main(args):
 
 
 if __name__ == '__main__':
+    with torch.profiler.profile() as profiler:
+        pass
+
+
     parser = argparse.ArgumentParser('DETR training and evaluation script', parents=[get_args_parser()])
     args = parser.parse_args()
     if args.output_dir:
